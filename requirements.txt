@@ -1,0 +1,12 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+langchain>=0.4
+langgraph>=0.4
+langchain-mcp-adapters>=0.1
+langchain-ollama>=0.3
+langchain-openai>=0.3
+fastmcp>=2.0
+aiosqlite>=0.20.0
+sse-starlette>=2.0
+pydantic>=2.0
+pydantic-settings>=2.0
