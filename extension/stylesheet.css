@@ -1,0 +1,107 @@
+/* stylesheet.css — Gnome Agent extension styles.
+ * Applies to the top-bar indicator and popup panel.
+ * St properties: padding, margin, border-radius, color, background-color, font-size.
+ */
+
+/* ── Panel indicator icon ───────────────────────────────────────────────────── */
+.gnome-agent-icon {
+    color: #7ec8e3;
+    padding: 0 4px;
+    transition-duration: 150ms;
+}
+
+.gnome-agent-icon:hover {
+    color: #a0e0ff;
+}
+
+.gnome-agent-icon.active {
+    color: #50c8ff;
+}
+
+/* ── Chat popup panel ───────────────────────────────────────────────────────── */
+.gnome-agent-popup {
+    background-color: rgba(16, 16, 26, 0.96);
+    border-radius: 18px;
+    border: 1px solid rgba(100, 100, 180, 0.35);
+    padding: 14px;
+}
+
+/* ── Message bubbles ────────────────────────────────────────────────────────── */
+.message-user {
+    background-color: rgba(24, 120, 240, 0.82);
+    border-radius: 14px 14px 4px 14px;
+    padding: 8px 14px;
+    margin: 3px 8px 3px 48px;
+    color: #ffffff;
+    font-size: 13px;
+}
+
+.message-assistant {
+    background-color: rgba(38, 38, 55, 0.90);
+    border-radius: 14px 14px 14px 4px;
+    padding: 8px 14px;
+    margin: 3px 48px 3px 8px;
+    color: #dde0f8;
+    font-size: 13px;
+}
+
+.message-system {
+    background-color: rgba(50, 50, 70, 0.6);
+    border-radius: 10px;
+    padding: 4px 10px;
+    margin: 2px 20px;
+    color: #888;
+    font-size: 11px;
+}
+
+/* ── Tool call chips ────────────────────────────────────────────────────────── */
+.tool-chip {
+    background-color: rgba(22, 80, 55, 0.85);
+    border-radius: 10px;
+    padding: 4px 10px;
+    margin: 2px 8px;
+    color: #90e8b0;
+    font-size: 11px;
+}
+
+.tool-chip.done {
+    background-color: rgba(22, 60, 80, 0.80);
+    color: #80c8e0;
+}
+
+.tool-chip.error {
+    background-color: rgba(100, 22, 22, 0.85);
+    color: #f08080;
+}
+
+/* ── Input area ─────────────────────────────────────────────────────────────── */
+.gnome-agent-input {
+    background-color: rgba(30, 30, 48, 0.92);
+    border: 1px solid rgba(100, 100, 180, 0.4);
+    border-radius: 12px;
+    color: #e0e0f8;
+    padding: 8px 14px;
+    font-size: 13px;
+    caret-color: #7ec8e3;
+}
+
+.gnome-agent-input:focus {
+    border-color: rgba(80, 140, 240, 0.65);
+}
+
+.gnome-agent-send {
+    background-color: rgba(24, 100, 220, 0.85);
+    border-radius: 12px;
+    color: white;
+    font-weight: bold;
+    padding: 7px 16px;
+    transition-duration: 100ms;
+}
+
+.gnome-agent-send:hover {
+    background-color: rgba(40, 130, 255, 0.95);
+}
+
+.gnome-agent-send:active {
+    background-color: rgba(20, 80, 180, 0.95);
+}

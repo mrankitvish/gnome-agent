@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.gnome-agent"
+          path="/org/gnome/shell/extensions/gnome-agent/">
+
+    <!-- Connection -->
+    <key name="server-url" type="s">
+      <default>'http://127.0.0.1:8000'</default>
+      <summary>Gnome Agent runtime base URL</summary>
+    </key>
+
+    <key name="api-key" type="s">
+      <default>''</default>
+      <summary>Bearer token for API authentication (optional)</summary>
+    </key>
+
+    <key name="agent-id" type="s">
+      <default>'default'</default>
+      <summary>Agent profile ID to use for chat</summary>
+    </key>
+
+    <!-- Context injection toggles -->
+    <key name="inject-active-app" type="b">
+      <default>true</default>
+      <summary>Inject active application name into context</summary>
+    </key>
+
+    <key name="inject-window-title" type="b">
+      <default>true</default>
+      <summary>Inject focused window title into context</summary>
+    </key>
+
+    <key name="inject-clipboard" type="b">
+      <default>false</default>
+      <summary>Inject clipboard content into context</summary>
+    </key>
+
+  </schema>
+</schemalist>

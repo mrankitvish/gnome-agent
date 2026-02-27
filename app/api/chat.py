@@ -10,6 +10,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from app.core.toon_utils import toon_context, toon_safe
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["chat"])
 
@@ -84,15 +86,15 @@ async def chat(body: ChatRequest, request: Request):
     # ── Persist user message ──────────────────────────────────────────────────
     await session_manager.add_message(session_id, "user", body.message)
 
-    # ── Build context-enriched system content ─────────────────────────────────
+    # ── Build TOON-compressed context injection ────────────────────────────────
     ctx = body.context
-    context_parts = []
-    if ctx.active_app:
-        context_parts.append(f"Active application: {ctx.active_app}")
-    if ctx.current_path:
-        context_parts.append(f"Current directory: {ctx.current_path}")
-    if ctx.clipboard:
-        context_parts.append(f"Clipboard content: {ctx.clipboard[:500]}")
+    context_data = {
+        k: v for k, v in {
+            "active_app": ctx.active_app,
+            "current_path": ctx.current_path,
+            "clipboard": ctx.clipboard[:500] if ctx.clipboard else None,
+        }.items() if v
+    }
 
     # ── Get or build agent ────────────────────────────────────────────────────
     agent = agent_builder.build(
@@ -106,10 +108,11 @@ async def chat(body: ChatRequest, request: Request):
 
     # ── Prepare input messages ────────────────────────────────────────────────
     user_content = body.message
-    if context_parts:
+    if context_data:
+        toon_ctx = toon_context(context_data)
         user_content = (
-            "[Desktop Context]\n"
-            + "\n".join(context_parts)
+            "[Desktop Context — TOON]\n"
+            + toon_ctx
             + "\n\n[User Message]\n"
             + body.message
         )

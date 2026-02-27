@@ -87,8 +87,46 @@ async def create_agent(body: AgentCreate, request: Request) -> dict:
         ) as cur:
             row = await cur.fetchone()
     logger.info("Created agent: %s (%s)", body.name, agent_id)
-    # Invalidate cached agent if one exists
     request.app.state.agent_builder.invalidate(agent_id)
+    return dict(row)
+
+
+class AgentUpdate(BaseModel):
+    """Partial update schema — all fields optional."""
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    model_provider: str | None = None
+    model_name: str | None = None
+    system_prompt: str | None = None
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    max_iterations: int | None = Field(default=None, ge=1, le=20)
+
+
+@router.patch("/{agent_id}", response_model=AgentResponse)
+async def update_agent(agent_id: str, body: AgentUpdate, request: Request) -> dict:
+    """Partially update an agent profile. Only provided fields are changed."""
+    db_get = request.app.state.db_get
+
+    # Build dynamic SET clause from non-None fields
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields provided to update")
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [agent_id]
+
+    async with db_get() as db:
+        result = await db.execute(
+            f"UPDATE agents SET {set_clause} WHERE id = ?", values
+        )
+        await db.commit()
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+        async with db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)) as cur:
+            row = await cur.fetchone()
+
+    # Invalidate LangGraph agent cache so next chat uses updated config
+    request.app.state.agent_builder.invalidate(agent_id)
+    logger.info("Updated agent %s: %s", agent_id, list(updates.keys()))
     return dict(row)
 
 

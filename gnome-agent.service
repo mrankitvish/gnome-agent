@@ -1,0 +1,22 @@
+[Unit]
+Description=Gnome Agent Runtime — local-first AI agent backend
+Documentation=https://github.com/your-username/gnome-agent
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Project/gnome-agent
+EnvironmentFile=%h/Project/gnome-agent/.env
+ExecStart=%h/Project/gnome-agent/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gnome-agent
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

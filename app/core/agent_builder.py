@@ -5,16 +5,11 @@ from typing import Any
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware
-from langgraph.checkpoint.memory import InMemorySaver
 
 from app.config import settings
 from app.core.llm_factory import get_llm
 
 logger = logging.getLogger(__name__)
-
-# Shared in-memory checkpointer for session continuity within a process lifetime.
-# Phase 2 will swap this for a SQLite-backed checkpointer for true persistence.
-_checkpointer = InMemorySaver()
 
 
 def build_agent(
@@ -22,6 +17,7 @@ def build_agent(
     llm,
     tools: list,
     system_prompt: str,
+    checkpointer: Any,
     max_iterations: int = 6,
     max_tool_calls: int = 10,
 ) -> Any:
@@ -31,6 +27,7 @@ def build_agent(
         llm: LangChain chat model instance.
         tools: List of LangChain Tool objects.
         system_prompt: System prompt for the agent.
+        checkpointer: LangGraph checkpointer (SQLite or InMemory).
         max_iterations: Max LLM calls per run (ModelCallLimitMiddleware).
         max_tool_calls: Max tool calls per run (ToolCallLimitMiddleware).
 
@@ -45,7 +42,7 @@ def build_agent(
             ModelCallLimitMiddleware(run_limit=max_iterations, exit_behavior="end"),
             ToolCallLimitMiddleware(run_limit=max_tool_calls, exit_behavior="end"),
         ],
-        checkpointer=_checkpointer,
+        checkpointer=checkpointer,
     )
     logger.info(
         "Built agent with %d tools, max_iterations=%d, max_tool_calls=%d",
@@ -63,8 +60,9 @@ class AgentBuilder:
     stateless between invocations (state lives in the checkpointer/thread).
     """
 
-    def __init__(self, tool_registry) -> None:
+    def __init__(self, tool_registry, checkpointer: Any) -> None:
         self._registry = tool_registry
+        self._checkpointer = checkpointer
         self._cache: dict[str, Any] = {}
 
     def build(
@@ -102,6 +100,7 @@ class AgentBuilder:
             llm=llm,
             tools=tools,
             system_prompt=system_prompt,
+            checkpointer=self._checkpointer,
             max_iterations=iterations,
             max_tool_calls=settings.max_tool_calls,
         )

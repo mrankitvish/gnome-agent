@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     port: int = 8000
     cors_origins: list[str] = ["*"]
 
+    # ── Auth & Rate Limiting ──────────────────────────────────────────
+    api_key: str = ""             # Bearer token; empty = auth disabled
+    rate_limit_rpm: int = 0       # Requests/minute per IP; 0 = disabled
+
     model_config = {"env_prefix": "GNOME_AGENT_", "env_file": ".env"}
 
 

@@ -9,10 +9,11 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 
 logger = logging.getLogger(__name__)
 
-# Path to the built-in system MCP server script
-_BUILTIN_SYSTEM_PATH = str(
-    Path(__file__).parent / "builtins" / "system.py"
-)
+# Paths to built-in MCP server scripts
+_BUILTINS_DIR = Path(__file__).parent / "builtins"
+_BUILTIN_SYSTEM_PATH = str(_BUILTINS_DIR / "system.py")
+_BUILTIN_FILESYSTEM_PATH = str(_BUILTINS_DIR / "filesystem.py")
+_BUILTIN_DESKTOP_PATH = str(_BUILTINS_DIR / "desktop.py")
 
 
 class MCPRouter:
@@ -28,12 +29,18 @@ class MCPRouter:
 
     def register_builtin_servers(self) -> None:
         """Register all built-in MCP servers."""
-        self._server_configs["system"] = {
-            "transport": "stdio",
-            "command": sys.executable,
-            "args": [_BUILTIN_SYSTEM_PATH],
+        builtin_scripts = {
+            "system": _BUILTIN_SYSTEM_PATH,
+            "filesystem": _BUILTIN_FILESYSTEM_PATH,
+            "desktop": _BUILTIN_DESKTOP_PATH,
         }
-        logger.info("Registered built-in MCP server: system")
+        for name, script_path in builtin_scripts.items():
+            self._server_configs[name] = {
+                "transport": "stdio",
+                "command": sys.executable,
+                "args": [script_path],
+            }
+            logger.info("Registered built-in MCP server: %s", name)
 
     def register_server(
         self,

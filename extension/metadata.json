@@ -1,0 +1,10 @@
+{
+  "uuid": "gnome-agent@localhost",
+  "name": "Gnome Agent",
+  "description": "Local AI agent with MCP tool support — talks to the gnome-agent runtime at localhost:8000",
+  "version": 1,
+  "shell-version": ["45", "46", "47"],
+  "url": "https://github.com/your-username/gnome-agent",
+  "settings-schema": "org.gnome.shell.extensions.gnome-agent",
+  "gettext-domain": "gnome-agent"
+}

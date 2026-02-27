@@ -10,3 +10,4 @@ aiosqlite>=0.20.0
 sse-starlette>=2.0
 pydantic>=2.0
 pydantic-settings>=2.0
+toonify>=0.1.0
