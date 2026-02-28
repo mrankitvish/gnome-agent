@@ -23,11 +23,14 @@ class MCPServerResponse(BaseModel):
     transport: str
     endpoint: str | None
     enabled: bool
+    builtin: bool = False
+    tool_count: int = 0
 
 
 class ToolResponse(BaseModel):
     name: str
     description: str
+    server: str | None = None
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -36,6 +39,8 @@ class ToolResponse(BaseModel):
 async def list_mcp_servers(request: Request) -> list[dict]:
     """List all registered MCP servers."""
     mcp_router = request.app.state.mcp_router
+    tool_registry = request.app.state.tool_registry
+    _BUILTINS = {"system", "filesystem", "desktop"}
     servers = []
     for name in mcp_router.server_names:
         cfg = mcp_router.get_server_config(name)
@@ -45,6 +50,11 @@ async def list_mcp_servers(request: Request) -> list[dict]:
                 "transport": cfg.get("transport", "unknown"),
                 "endpoint": cfg.get("url") or cfg.get("command"),
                 "enabled": True,
+                "builtin": name in _BUILTINS,
+                "tool_count": sum(
+                    1 for t in tool_registry.list_tools()
+                    if (getattr(t, 'server', None) or '').startswith(name)
+                ),
             }
         )
     return servers
@@ -79,6 +89,26 @@ async def register_mcp_server(body: MCPServerCreate, request: Request) -> dict:
 
     logger.info("Registered and connected to MCP server: %s", body.name)
     return {"status": "registered", "name": body.name, "tools_count": tool_registry.count}
+
+
+@router.delete("/mcp/servers/{name}", status_code=204)
+async def remove_mcp_server(name: str, request: Request) -> None:
+    """Remove an external MCP server and refresh tools."""
+    mcp_router = request.app.state.mcp_router
+    _BUILTINS = {"system", "filesystem", "desktop"}
+    if name in _BUILTINS:
+        raise HTTPException(status_code=400, detail="Cannot remove built-in MCP servers")
+    if name not in mcp_router.server_names:
+        raise HTTPException(status_code=404, detail=f"Server '{name}' not found")
+    mcp_router._server_configs.pop(name, None)
+    await mcp_router.stop()
+    await mcp_router.start()
+    tools = await mcp_router.get_tools()
+    tool_registry = request.app.state.tool_registry
+    tool_registry.clear()
+    tool_registry.register_tools(tools)
+    request.app.state.agent_builder._cache.clear()
+    logger.info("Removed MCP server: %s", name)
 
 
 @router.get("/tools", response_model=list[ToolResponse])

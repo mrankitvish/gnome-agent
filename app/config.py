@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     cors_origins: list[str] = ["*"]
+    enable_builtin_servers: bool = False
 
     # ── Auth & Rate Limiting ──────────────────────────────────────────
     api_key: str = ""             # Bearer token; empty = auth disabled

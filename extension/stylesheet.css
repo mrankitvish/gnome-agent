@@ -105,3 +105,22 @@
 .gnome-agent-send:active {
     background-color: rgba(20, 80, 180, 0.95);
 }
+
+.message-copy-button {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 2px 6px;
+    margin-top: 4px;
+    color: rgba(255, 255, 255, 0.6);
+    transition-duration: 200ms;
+}
+
+.message-copy-button:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: white;
+}
+
+.message-copy-button:active {
+    background-color: rgba(30, 110, 230, 0.5);
+}

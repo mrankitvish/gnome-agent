@@ -14,6 +14,7 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
+import Gio from 'gi://Gio';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
@@ -30,11 +31,12 @@ const PANEL_HEIGHT = 580;
 
 export const GnomeAgentIndicator = GObject.registerClass(
     class GnomeAgentIndicator extends PanelMenu.Button {
-        _init(api, getContext, settings) {
+        _init(api, getContext, settings, extensionPath) {
             super._init(0.5, 'Gnome Agent');
             this._api = api;
             this._getContext = getContext;
             this._settings = settings;
+            this._extensionPath = extensionPath;
             this._sessionId = null;
             this._cancelStream = null;
             this._currentAssistantBubble = null;
@@ -42,33 +44,48 @@ export const GnomeAgentIndicator = GObject.registerClass(
             this._typingIndicator = null;
             this._msgCount = 0;
 
-            // ── Panel icon ───────────────────────────────────────────────────────
             this._iconBox = new St.BoxLayout({ style: 'spacing: 4px; padding: 0 4px;' });
 
+            let iconFile = Gio.File.new_for_path(this._extensionPath + '/icon.png');
+            let gicon = new Gio.FileIcon({ file: iconFile });
+
             this._icon = new St.Icon({
-                icon_name: 'dialog-information-symbolic',
+                gicon: gicon,
+                icon_size: 24,
                 style_class: 'system-status-icon',
                 style: 'color: #7ec8e3;',
             });
-            this._badge = new St.Label({
-                text: '',
-                style: `
-                color: #fff; background-color: rgba(24,120,240,0.9);
-                border-radius: 8px; padding: 0 4px;
-                font-size: 9px; font-weight: bold;
-            `,
-                visible: false,
-            });
             this._iconBox.add_child(this._icon);
-            this._iconBox.add_child(this._badge);
             this.add_child(this._iconBox);
 
-            // ── Floating popup ───────────────────────────────────────────────────
             this._popup = this._buildPopup();
             this.connect('button-press-event', () => this._togglePopup());
+            this._settingsId = this._settings.connect('changed', () => this._applySettings());
+            this._applySettings();
 
             // Suppress default PanelMenu dropdown
             this.menu.actor.hide();
+        }
+
+        _applySettings() {
+            const opac = (this._settings.get_int('opacity') || 95) / 100.0;
+            this._popup.style = `
+                background-color: rgba(14, 14, 24, ${opac});
+                border: 1px solid rgba(80, 100, 180, 0.3);
+                border-radius: 18px;
+                padding: 0;
+                width: ${PANEL_WIDTH}px;
+            `;
+            // Update input area as well to match opacity
+            if (this._inputArea) {
+                this._inputArea.style = `
+                    background-color: rgba(20, 20, 36, ${opac});
+                    border-top: 1px solid rgba(80,100,180,0.2);
+                    border-radius: 0 0 18px 18px;
+                    padding: 10px 12px;
+                    spacing: 8px;
+                `;
+            }
         }
 
         // ── Build popup ───────────────────────────────────────────────────────────
@@ -77,8 +94,6 @@ export const GnomeAgentIndicator = GObject.registerClass(
             const panel = new St.BoxLayout({
                 vertical: true,
                 style: `
-                background-color: rgba(14, 14, 24, 0.97);
-                border: 1px solid rgba(80, 100, 180, 0.3);
                 border-radius: 18px;
                 padding: 0;
                 width: ${PANEL_WIDTH}px;
@@ -101,15 +116,21 @@ export const GnomeAgentIndicator = GObject.registerClass(
             const agentIcon = new St.Label({ text: '✦', style: 'color: #7ec8e3; font-size: 16px;' });
             const titleCol = new St.BoxLayout({ vertical: true, x_expand: true });
 
+            this._titleRow = new St.BoxLayout({
+                x_expand: true,
+                style: 'spacing: 6px;',
+            });
             this._titleLabel = new St.Label({
                 text: 'Gnome Agent',
                 style: 'color: #e0e8ff; font-size: 13px; font-weight: bold;',
             });
+            this._titleRow.add_child(this._titleLabel);
+
             this._subtitleLabel = new St.Label({
                 text: 'Ready',
                 style: 'color: rgba(120,140,200,0.7); font-size: 10px;',
             });
-            titleCol.add_child(this._titleLabel);
+            titleCol.add_child(this._titleRow);
             titleCol.add_child(this._subtitleLabel);
 
             // Header action buttons
@@ -149,10 +170,8 @@ export const GnomeAgentIndicator = GObject.registerClass(
             panel.add_child(statusBar);
 
             // ── Input row ─────────────────────────────────────────────────────────
-            const inputArea = new St.BoxLayout({
+            this._inputArea = new St.BoxLayout({
                 style: `
-                background-color: rgba(20, 20, 36, 0.98);
-                border-top: 1px solid rgba(80,100,180,0.2);
                 border-radius: 0 0 18px 18px;
                 padding: 10px 12px;
                 spacing: 8px;
@@ -196,9 +215,9 @@ export const GnomeAgentIndicator = GObject.registerClass(
             this._sendBtn.set_child(sendIcon);
             this._sendBtn.connect('clicked', () => this._send());
 
-            inputArea.add_child(this._input);
-            inputArea.add_child(this._sendBtn);
-            panel.add_child(inputArea);
+            this._inputArea.add_child(this._input);
+            this._inputArea.add_child(this._sendBtn);
+            panel.add_child(this._inputArea);
 
             Main.layoutManager.addChrome(panel, { affectsInputRegion: true });
 
@@ -262,10 +281,11 @@ export const GnomeAgentIndicator = GObject.registerClass(
         }
 
         _repositionPopup() {
+            const margin = this._settings.get_int('margin') ?? 6;
             const panelBox = Main.layoutManager.panelBox;
             const [px] = this.get_transformed_position();
-            const x = Math.max(8, Math.min(px, global.stage.width - PANEL_WIDTH - 8));
-            this._popup.set_position(x, panelBox.height + 4);
+            const x = Math.max(margin, Math.min(px, global.stage.width - PANEL_WIDTH - margin));
+            this._popup.set_position(x, panelBox.height + margin);
         }
 
         // ── Chat logic ────────────────────────────────────────────────────────────
@@ -275,7 +295,8 @@ export const GnomeAgentIndicator = GObject.registerClass(
             if (!message || this._cancelStream) return;
 
             this._input.set_text('');
-            this._addMessage(UserBubble(message));
+            const opts = { fontSize: this._settings.get_int('font-size') || 13 };
+            this._addMessage(UserBubble(message, opts));
             this._setBusy(true);
             this._showTyping();
 
@@ -294,8 +315,6 @@ export const GnomeAgentIndicator = GObject.registerClass(
                 },
             });
 
-            this._msgCount++;
-            this._updateBadge();
         }
 
         _handleEvent(type, data) {
@@ -308,7 +327,8 @@ export const GnomeAgentIndicator = GObject.registerClass(
                 case 'message': {
                     this._hideTyping();
                     if (!this._currentAssistantBubble) {
-                        this._currentAssistantBubble = AssistantBubble();
+                        const opts = { fontSize: this._settings.get_int('font-size') || 13 };
+                        this._currentAssistantBubble = AssistantBubble('', opts);
                         this._addMessage(this._currentAssistantBubble.actor);
                     }
                     if (data.text) this._currentAssistantBubble.appendText(data.text);
@@ -338,7 +358,8 @@ export const GnomeAgentIndicator = GObject.registerClass(
                             this._currentAssistantBubble.setText(data.text);
                             this._currentAssistantBubble.finalize?.();
                         } else {
-                            const b = AssistantBubble(data.text);
+                            const opts = { fontSize: this._settings.get_int('font-size') || 13 };
+                            const b = AssistantBubble(data.text, opts);
                             this._addMessage(b.actor);
                         }
                     }
@@ -371,11 +392,9 @@ export const GnomeAgentIndicator = GObject.registerClass(
             this._currentAssistantBubble = null;
             this._currentToolBubbles = {};
             this._typingIndicator = null;
-            this._msgCount = 0;
             this._messageBox.destroy_all_children();
             this._setBusy(false);
             this._setStatus('');
-            this._updateBadge();
             this._addMessage(SystemBubble('New conversation started'));
         }
 
@@ -411,14 +430,7 @@ export const GnomeAgentIndicator = GObject.registerClass(
             );
         }
 
-        _updateBadge() {
-            if (this._msgCount > 0) {
-                this._badge.text = String(this._msgCount);
-                this._badge.visible = true;
-            } else {
-                this._badge.visible = false;
-            }
-        }
+
 
         _scrollToBottom() {
             GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
@@ -428,12 +440,11 @@ export const GnomeAgentIndicator = GObject.registerClass(
             });
         }
 
-        // ── Cleanup ───────────────────────────────────────────────────────────────
-
         destroy() {
             this._cancelStream?.();
             Main.layoutManager.removeChrome(this._popup);
             this._popup.destroy();
             super.destroy();
         }
-    });
+    }
+);

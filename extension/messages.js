@@ -72,9 +72,10 @@ function _now() {
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
-function _makeLabel(markup, wrapWidth = 320) {
+function _makeLabel(markup, opts = {}) {
+    const fontSize = opts.fontSize || 13;
     const label = new St.Label({
-        style: 'font-size: 13px; line-height: 1.5;',
+        style: `font-size: ${fontSize}px; line-height: 1.5;`,
         x_expand: true,
     });
     label.clutter_text.line_wrap = true;
@@ -92,10 +93,21 @@ function _timestamp() {
     });
 }
 
+function _setSafeMarkup(label, markup, rawText = '') {
+    try {
+        label.clutter_text.set_markup(markup);
+    } catch (e) {
+        // If Pango fails to parse the markup, fallback to safe plain text
+        const safe = GLib.markup_escape_text(rawText || '', -1);
+        label.clutter_text.set_markup(safe);
+        console.warn(`[Gnome Agent] Pango markup error: ${e.message}`);
+    }
+}
+
 // ── Public bubble constructors ───────────────────────────────────────────────
 
 /** User message bubble — right-aligned, blue. */
-export function UserBubble(text) {
+export function UserBubble(text, opts = {}) {
     const outer = new St.BoxLayout({
         vertical: false,
         x_align: Clutter.ActorAlign.END,
@@ -112,7 +124,7 @@ export function UserBubble(text) {
         `,
     });
 
-    const label = _makeLabel(GLib.markup_escape_text(text, -1));
+    const label = _makeLabel(GLib.markup_escape_text(text, -1), opts);
     label.style += ' color: #ffffff;';
 
     inner.add_child(label);
@@ -133,7 +145,7 @@ export function UserBubble(text) {
  * Assistant message bubble — left-aligned with markdown support.
  * Returns { actor, appendText(str), setText(str), finalize() }
  */
-export function AssistantBubble(initialText = '') {
+export function AssistantBubble(initialText = '', opts = {}) {
     const outer = new St.BoxLayout({
         vertical: false,
         x_align: Clutter.ActorAlign.START,
@@ -150,34 +162,33 @@ export function AssistantBubble(initialText = '') {
         `,
     });
 
-    const label = _makeLabel(markdownToPango(initialText) || '<i><span foreground="#666">…</span></i>');
+    const label = _makeLabel('', opts);
     label.style += ' color: #dde0f8;';
+    _setSafeMarkup(label, markdownToPango(initialText) || '<i><span foreground="#666">…</span></i>', initialText);
 
-    // Copy button (shows on hover)
+    // Copy button
     const copyBtn = new St.Button({
-        label: '⎘',
-        style: `
-            color: rgba(120,140,200,0.5); font-size: 11px;
-            padding: 0; margin-top: 4px;
-            background: none; border: none;
-        `,
+        style_class: 'message-copy-button',
+        child: new St.Icon({
+            icon_name: 'edit-copy-symbolic',
+            icon_size: 14,
+        }),
         x_align: Clutter.ActorAlign.END,
-        visible: false,
     });
 
     let _rawText = initialText;
 
     copyBtn.connect('clicked', () => {
         St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, _rawText);
-        copyBtn.label = '✓ copied';
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => {
-            copyBtn.label = '⎘';
+        // Visual feedback
+        const oldIcon = copyBtn.child.icon_name;
+        copyBtn.child.icon_name = 'emblem-ok-symbolic';
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
+            copyBtn.child.icon_name = oldIcon;
             return GLib.SOURCE_REMOVE;
         });
     });
 
-    inner.connect('enter-event', () => { copyBtn.visible = true; });
-    inner.connect('leave-event', () => { copyBtn.visible = false; });
     inner.add_child(label);
     inner.add_child(copyBtn);
     inner.add_child(_timestamp());
@@ -196,16 +207,16 @@ export function AssistantBubble(initialText = '') {
         appendText(chunk) {
             _accumulated += chunk;
             _rawText = _accumulated;
-            label.clutter_text.set_markup(markdownToPango(_accumulated));
+            _setSafeMarkup(label, markdownToPango(_accumulated), _accumulated);
         },
         setText(text) {
             _rawText = text;
             _accumulated = text;
-            label.clutter_text.set_markup(markdownToPango(text));
+            _setSafeMarkup(label, markdownToPango(text), text);
         },
         finalize() {
             // Re-render final text with full markdown pass
-            label.clutter_text.set_markup(markdownToPango(_accumulated));
+            _setSafeMarkup(label, markdownToPango(_accumulated), _accumulated);
         },
     };
 }

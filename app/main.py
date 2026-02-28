@@ -63,7 +63,8 @@ async def lifespan(app: FastAPI):
 
     # ── MCP client + tool registry ────────────────────────────────────────────
     mcp_router = MCPRouter()
-    mcp_router.register_builtin_servers()
+    if settings.enable_builtin_servers:
+        mcp_router.register_builtin_servers()
 
     # Restore externally-registered MCP servers from DB
     await _load_persisted_mcp_servers(mcp_router, get_db)

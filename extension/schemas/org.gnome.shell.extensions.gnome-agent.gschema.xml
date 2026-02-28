@@ -35,5 +35,21 @@
       <summary>Inject clipboard content into context</summary>
     </key>
 
+    <!-- Appearance -->
+    <key name="font-size" type="i">
+      <default>13</default>
+      <summary>Base font size for chat messages (px)</summary>
+    </key>
+
+    <key name="margin" type="i">
+      <default>6</default>
+      <summary>Panel margin away from edge (px)</summary>
+    </key>
+
+    <key name="opacity" type="i">
+      <default>95</default>
+      <summary>Panel background opacity (%)</summary>
+    </key>
+
   </schema>
 </schemalist>

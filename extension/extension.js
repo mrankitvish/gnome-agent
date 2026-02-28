@@ -36,6 +36,7 @@ export default class GnomeAgentExtension extends Extension {
             this._api,
             () => this._captureContext(),
             this._settings,
+            this.path
         );
         Main.panel.addToStatusArea('gnome-agent', this._indicator);
     }
