@@ -31,7 +31,7 @@
 
 > Watch the assistant in action:
 
-<video src="docs/gnome-agent-demo.webm" autoplay loop muted playsinline width="100%"></video>
+https://github.com/mrankitvish/gnome-agent/raw/main/docs/gnome-agent-demo.webm
 
 ---
 
@@ -42,42 +42,42 @@
 ```mermaid
 graph TB
     subgraph GNOME["GNOME Shell Extension"]
-        EXT[extension.js\nMain entry point]
-        PANEL[panel.js\nChat UI Panel]
-        PREFS[prefs.js\nPreferences]
-        API_JS[api.js\nHTTP + SSE Client]
-        MSG[messages.js\nMessage Bubbles]
+        EXT["extension.js\nMain entry point"]
+        PANEL["panel.js\nChat UI Panel"]
+        PREFS["prefs.js\nPreferences"]
+        API_JS["api.js\nHTTP + SSE Client"]
+        MSG["messages.js\nMessage Bubbles"]
     end
 
     subgraph BACKEND["FastAPI Backend"]
-        MAIN[main.py\nApp + Lifespan]
-        CHAT_API[/chat\nSSE Stream]
-        CONFIG_API[/config/llm\nLLM Settings]
-        SESSION_API[/sessions\nHistory]
-        HEALTH[/health]
+        MAIN["main.py\nApp + Lifespan"]
+        CHAT_API["/chat\nSSE Stream"]
+        CONFIG_API["/config/llm\nLLM Settings"]
+        SESSION_API["/sessions\nHistory"]
+        HEALTH["/health"]
     end
 
     subgraph CORE["Core Services"]
-        AGENT[AgentBuilder\nLangGraph graph]
-        SM[SessionManager\nMessage persistence]
-        CHKPT[SQLiteCheckpointer\nThread state]
-        LLM_FAC[LLM Factory\nProvider abstraction]
+        AGENT["AgentBuilder\nLangGraph graph"]
+        SM["SessionManager\nMessage persistence"]
+        CHKPT["SQLiteCheckpointer\nThread state"]
+        LLM_FAC["LLM Factory\nProvider abstraction"]
     end
 
     subgraph MCP_LAYER["MCP Tool Layer"]
-        MCP_ROUTER[MCPRouter\nMultiServerMCPClient]
-        SYS_MCP[System MCP\nProcesses, Disk, Logs]
-        FS_MCP[Filesystem MCP\nRead, Search]
-        DESK_MCP[Desktop MCP\nApps, Screenshots]
-        CUSTOM[Custom MCP Servers]
+        MCP_ROUTER["MCPRouter\nMultiServerMCPClient"]
+        SYS_MCP["System MCP\nProcesses, Disk, Logs"]
+        FS_MCP["Filesystem MCP\nRead, Search"]
+        DESK_MCP["Desktop MCP\nApps, Screenshots"]
+        CUSTOM["Custom MCP Servers"]
     end
 
     subgraph DB["SQLite Database"]
-        SESSIONS[(sessions)]
-        MESSAGES[(messages)]
-        CHECKPOINTS[(checkpoints)]
-        APP_CONFIG[(app_config)]
-        MCP_SERVERS[(mcp_servers)]
+        SESSIONS[("sessions")]
+        MESSAGES[("messages")]
+        CHECKPOINTS[("checkpoints")]
+        APP_CONFIG[("app_config")]
+        MCP_SERVERS[("mcp_servers")]
     end
 
     EXT --> PANEL
