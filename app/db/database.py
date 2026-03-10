@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 import aiosqlite
 
 from app.config import settings
-from app.db.models import SCHEMA_SQL, DEFAULT_AGENT_SQL
+from app.db.models import SCHEMA_SQL, DEFAULT_CONFIG_SQL
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +19,13 @@ async def init_db() -> None:
     async with aiosqlite.connect(_db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.executescript(SCHEMA_SQL)
-        seed_sql = DEFAULT_AGENT_SQL.format(
+        seed_sql = DEFAULT_CONFIG_SQL.format(
             provider=settings.default_llm_provider,
             model=settings.default_llm_model,
+            base_url=settings.ollama_base_url or '',
+            api_key=settings.api_key or ''
         )
-        await db.executescript(seed_sql)
+        await db.execute(seed_sql)
         await db.commit()
     logger.info("Database initialized at %s", _db_path)
 

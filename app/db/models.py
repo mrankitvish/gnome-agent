@@ -1,22 +1,21 @@
 """SQLite schema definitions and table creation."""
 
 SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS agents (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    model_provider TEXT NOT NULL,
-    model_name TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS app_config (
+    id INTEGER PRIMARY KEY CHECK (id = 1), -- Single row table
+    provider TEXT NOT NULL DEFAULT 'ollama',
+    model TEXT NOT NULL DEFAULT 'llama3:latest',
+    base_url TEXT DEFAULT 'http://localhost:11434',
+    api_key TEXT,
     system_prompt TEXT NOT NULL DEFAULT 'You are a helpful AI assistant with access to desktop tools.',
     temperature REAL NOT NULL DEFAULT 0.7,
     max_iterations INTEGER NOT NULL DEFAULT 6,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
-    agent_id TEXT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -65,14 +64,15 @@ CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, created_
 CREATE INDEX IF NOT EXISTS idx_tool_logs_session ON tool_logs(session_id, created_at);
 """
 
-# Default agent — re-seeded on every startup to pick up provider/model changes from .env
-DEFAULT_AGENT_SQL = """
-INSERT OR REPLACE INTO agents (id, name, model_provider, model_name, system_prompt, temperature, max_iterations)
+# Default config — seeded on first startup if row doesn't exist
+DEFAULT_CONFIG_SQL = """
+INSERT OR IGNORE INTO app_config (id, provider, model, base_url, api_key, system_prompt, temperature, max_iterations)
 VALUES (
-    'default',
-    'Default Agent',
+    1,
     '{provider}',
     '{model}',
+    '{base_url}',
+    '{api_key}',
     'You are a helpful AI assistant with access to desktop and system tools. Use the available tools to help the user with tasks on their GNOME desktop. Always explain what you are doing before executing tools.',
     0.7,
     6

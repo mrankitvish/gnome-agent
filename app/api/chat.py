@@ -26,7 +26,6 @@ class ChatContext(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    agent_id: str = Field(default="default")
     session_id: str | None = Field(
         default=None,
         description="Existing session ID. If None, a new session is created.",
@@ -62,13 +61,13 @@ async def chat(body: ChatRequest, request: Request):
     # ── Resolve agent config ──────────────────────────────────────────────────
     async with db_get() as db:
         async with db.execute(
-            "SELECT * FROM agents WHERE id = ?", (body.agent_id,)
+            "SELECT * FROM app_config WHERE id = 1"
         ) as cur:
             agent_row = await cur.fetchone()
 
     if not agent_row:
         raise HTTPException(
-            status_code=404, detail=f"Agent '{body.agent_id}' not found"
+            status_code=500, detail="Global LLM configuration not found. Please set it in preferences."
         )
     agent_cfg = dict(agent_row)
 
@@ -81,7 +80,7 @@ async def chat(body: ChatRequest, request: Request):
                 status_code=404, detail=f"Session '{session_id}' not found"
             )
     else:
-        session_id = await session_manager.create_session(body.agent_id)
+        session_id = await session_manager.create_session()
 
     # ── Persist user message ──────────────────────────────────────────────────
     await session_manager.add_message(session_id, "user", body.message)
@@ -98,12 +97,13 @@ async def chat(body: ChatRequest, request: Request):
 
     # ── Get or build agent ────────────────────────────────────────────────────
     agent = agent_builder.build(
-        body.agent_id,
-        provider=agent_cfg["model_provider"],
-        model=agent_cfg["model_name"],
-        system_prompt=agent_cfg["system_prompt"],
-        temperature=agent_cfg["temperature"],
-        max_iterations=agent_cfg["max_iterations"],
+        provider=agent_cfg.get("provider", "ollama"),
+        model=agent_cfg.get("model", "llama3:latest"),
+        base_url=agent_cfg.get("base_url"),
+        api_key=agent_cfg.get("api_key"),
+        system_prompt=agent_cfg.get("system_prompt", ""),
+        temperature=agent_cfg.get("temperature", 0.7),
+        max_iterations=agent_cfg.get("max_iterations", 6),
     )
 
     # ── Prepare input messages ────────────────────────────────────────────────

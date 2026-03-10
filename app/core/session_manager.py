@@ -17,16 +17,16 @@ class SessionManager:
         """
         self._get_db = db_get_fn
 
-    async def create_session(self, agent_id: str) -> str:
-        """Create a new session for an agent. Returns the new session_id."""
+    async def create_session(self) -> str:
+        """Create a new session. Returns the new session_id."""
         session_id = str(uuid.uuid4())
         async with self._get_db() as db:
             await db.execute(
-                "INSERT INTO sessions (id, agent_id) VALUES (?, ?)",
-                (session_id, agent_id),
+                "INSERT INTO sessions (id) VALUES (?)",
+                (session_id,),
             )
             await db.commit()
-        logger.info("Created session %s for agent %s", session_id, agent_id)
+        logger.info("Created session %s", session_id)
         return session_id
 
     async def get_session(self, session_id: str) -> dict | None:
@@ -38,20 +38,13 @@ class SessionManager:
                 row = await cursor.fetchone()
         return dict(row) if row else None
 
-    async def list_sessions(self, agent_id: str | None = None) -> list[dict]:
-        """List sessions, optionally filtered by agent."""
+    async def list_sessions(self) -> list[dict]:
+        """List sessions ordered by creation time."""
         async with self._get_db() as db:
-            if agent_id:
-                async with db.execute(
-                    "SELECT * FROM sessions WHERE agent_id = ? ORDER BY created_at DESC",
-                    (agent_id,),
-                ) as cursor:
-                    rows = await cursor.fetchall()
-            else:
-                async with db.execute(
-                    "SELECT * FROM sessions ORDER BY created_at DESC"
-                ) as cursor:
-                    rows = await cursor.fetchall()
+            async with db.execute(
+                "SELECT * FROM sessions ORDER BY created_at DESC"
+            ) as cursor:
+                rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 
     async def add_message(

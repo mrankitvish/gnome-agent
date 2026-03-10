@@ -8,14 +8,10 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.get("")
-async def list_sessions(request: Request, agent_id: str | None = None) -> list[dict]:
-    """List all chat sessions, optionally filtered by agent.
-
-    Query params:
-        agent_id: Optional, filter sessions by this agent.
-    """
+async def list_sessions(request: Request) -> list[dict]:
+    """List all chat sessions."""
     session_manager = request.app.state.session_manager
-    return await session_manager.list_sessions(agent_id=agent_id)
+    return await session_manager.list_sessions()
 
 
 @router.get("/{session_id}")

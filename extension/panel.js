@@ -26,8 +26,8 @@ import {
     TypingIndicator,
 } from './messages.js';
 
-const PANEL_WIDTH = 420;
-const PANEL_HEIGHT = 580;
+const DEFAULT_PANEL_WIDTH = 420;
+const DEFAULT_PANEL_HEIGHT = 580;
 
 export const GnomeAgentIndicator = GObject.registerClass(
     class GnomeAgentIndicator extends PanelMenu.Button {
@@ -59,7 +59,16 @@ export const GnomeAgentIndicator = GObject.registerClass(
             this.add_child(this._iconBox);
 
             this._popup = this._buildPopup();
-            this.connect('button-press-event', () => this._togglePopup());
+
+            // Fix click propagation on GNOME shell:
+            this.connect('button-release-event', (actor, event) => {
+                if (event.get_button() === 1) { // Left click
+                    this._togglePopup();
+                    return Clutter.EVENT_STOP;
+                }
+                return Clutter.EVENT_PROPAGATE;
+            });
+
             this._settingsId = this._settings.connect('changed', () => this._applySettings());
             this._applySettings();
 
@@ -68,14 +77,20 @@ export const GnomeAgentIndicator = GObject.registerClass(
         }
 
         _applySettings() {
+            this.panelWidth = this._settings.get_int('window-width') || DEFAULT_PANEL_WIDTH;
+            this.panelHeight = this._settings.get_int('window-height') || DEFAULT_PANEL_HEIGHT;
+
             const opac = (this._settings.get_int('opacity') || 95) / 100.0;
-            this._popup.style = `
-                background-color: rgba(14, 14, 24, ${opac});
-                border: 1px solid rgba(80, 100, 180, 0.3);
-                border-radius: 18px;
-                padding: 0;
-                width: ${PANEL_WIDTH}px;
-            `;
+            const targetActor = this._popupContainer || this._popup;
+            if (targetActor) {
+                targetActor.style = `
+                    background-color: rgba(14, 14, 24, ${opac});
+                    border: 1px solid rgba(80, 100, 180, 0.3);
+                    border-radius: 18px;
+                    padding: 0;
+                    width: ${this.panelWidth}px;
+                `;
+            }
             // Update input area as well to match opacity
             if (this._inputArea) {
                 this._inputArea.style = `
@@ -86,17 +101,32 @@ export const GnomeAgentIndicator = GObject.registerClass(
                     spacing: 8px;
                 `;
             }
+            if (this._scrollView) {
+                this._scrollView.style = `height: ${this.panelHeight - 160}px; padding: 8px 0;`;
+            }
+            if (this._historyPanel) {
+                this._historyPanel.style = `
+                    background-color: rgba(22, 22, 40, ${opac});
+                    border-radius: 18px;
+                    padding: 0;
+                    width: ${this.panelWidth}px;
+                    height: ${this.panelHeight}px;
+                `;
+            }
         }
 
         // ── Build popup ───────────────────────────────────────────────────────────
 
         _buildPopup() {
+            this.panelWidth = this._settings.get_int('window-width') || DEFAULT_PANEL_WIDTH;
+            this.panelHeight = this._settings.get_int('window-height') || DEFAULT_PANEL_HEIGHT;
+
             const panel = new St.BoxLayout({
                 vertical: true,
                 style: `
                 border-radius: 18px;
                 padding: 0;
-                width: ${PANEL_WIDTH}px;
+                width: ${this.panelWidth}px;
             `,
                 visible: false,
                 opacity: 0,
@@ -134,18 +164,20 @@ export const GnomeAgentIndicator = GObject.registerClass(
             titleCol.add_child(this._subtitleLabel);
 
             // Header action buttons
+            const historyBtn = this._headerBtn('🕑', 'History', () => this._toggleHistory());
             const newBtn = this._headerBtn('↺', 'New chat', () => this._clearChat());
             const closeBtn = this._headerBtn('✕', 'Close', () => this._hidePopup());
 
             header.add_child(agentIcon);
             header.add_child(titleCol);
+            header.add_child(historyBtn);
             header.add_child(newBtn);
             header.add_child(closeBtn);
             panel.add_child(header);
 
             // ── Scrollable message list ───────────────────────────────────────────
             this._scrollView = new St.ScrollView({
-                style: `height: ${PANEL_HEIGHT - 160}px; padding: 8px 0;`,
+                style: `height: ${this.panelHeight - 160}px; padding: 8px 0;`,
                 hscrollbar_policy: St.PolicyType.NEVER,
                 vscrollbar_policy: St.PolicyType.AUTOMATIC,
             });
@@ -248,14 +280,301 @@ export const GnomeAgentIndicator = GObject.registerClass(
             return btn;
         }
 
+        // ── History overlay ───────────────────────────────────────────────────────
+
+        _buildHistoryPanel() {
+            this._historyPanel = new St.BoxLayout({
+                vertical: true,
+                style: `
+                    background-color: rgba(22, 22, 40, 0.98);
+                    border-radius: 18px;
+                    padding: 0;
+                    width: ${PANEL_WIDTH}px;
+                    height: ${PANEL_HEIGHT}px;
+                `,
+                visible: false,
+                opacity: 0,
+            });
+
+            const header = new St.BoxLayout({
+                style: `
+                    border-bottom: 1px solid rgba(80,100,180,0.2);
+                    padding: 12px 14px;
+                    spacing: 8px;
+                `,
+            });
+            const title = new St.Label({
+                text: 'Conversation History',
+                style: 'color: #e0e8ff; font-size: 14px; font-weight: bold;',
+                x_expand: true,
+            });
+            const closeBtn = this._headerBtn('✕', 'Close History', () => this._hideHistory());
+
+            header.add_child(title);
+            header.add_child(closeBtn);
+            this._historyPanel.add_child(header);
+
+            this._historyScrollView = new St.ScrollView({
+                style: `padding: 8px 0;`,
+                hscrollbar_policy: St.PolicyType.NEVER,
+                vscrollbar_policy: St.PolicyType.AUTOMATIC,
+                x_expand: true,
+                y_expand: true,
+            });
+            this._historyBox = new St.BoxLayout({
+                vertical: true,
+                style: 'spacing: 4px; padding: 4px 8px;',
+            });
+            this._historyScrollView.set_child(this._historyBox);
+            this._historyPanel.add_child(this._historyScrollView);
+
+            return this._historyPanel;
+        }
+
+        _toggleHistory() {
+            if (this._historyPanel.visible) {
+                this._hideHistory();
+            } else {
+                this._showHistory();
+            }
+        }
+
+        _showHistory() {
+            this._historyPanel.visible = true;
+            this._historyPanel.ease({
+                opacity: 255,
+                duration: 200,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            });
+            this._mainContainer.ease({
+                opacity: 0,
+                duration: 200,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onComplete: () => { this._mainContainer.visible = false; }
+            });
+            this._loadHistory();
+        }
+
+        _hideHistory() {
+            this._mainContainer.visible = true;
+            this._mainContainer.ease({
+                opacity: 255,
+                duration: 200,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            });
+            this._historyPanel.ease({
+                opacity: 0,
+                duration: 200,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onComplete: () => { this._historyPanel.visible = false; }
+            });
+        }
+
+        async _loadHistory() {
+            this._historyBox.destroy_all_children();
+            const loading = new St.Label({ text: 'Loading sessions...', style: 'color: gray; padding: 12px; text-align: center;' });
+            this._historyBox.add_child(loading);
+
+            try {
+                const url = this._settings.get_string('server-url') + '/sessions';
+                const apiKey = this._settings.get_string('api-key');
+                let uri;
+                try { uri = GLib.Uri.parse(url, GLib.UriFlags.NONE); } catch { return; }
+
+                const Soup = (await import('gi://Soup?version=3.0')).default;
+                const session = new Soup.Session();
+                const msg = new Soup.Message({ method: 'GET', uri });
+                if (apiKey) msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
+
+                const bytes = await session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null);
+                if (msg.status_code === 200) {
+                    const text = new TextDecoder().decode(bytes.get_data());
+                    const sessions = JSON.parse(text);
+                    this._renderHistory(sessions);
+                } else {
+                    loading.text = 'Failed to load history';
+                }
+            } catch (e) {
+                loading.text = 'Failed to load config';
+            }
+        }
+
+        _renderHistory(sessions) {
+            this._historyBox.destroy_all_children();
+            if (!sessions || sessions.length === 0) {
+                this._historyBox.add_child(new St.Label({ text: 'No conversation history found.', style: 'color: gray; padding: 12px; text-align: center;' }));
+                return;
+            }
+
+            for (const s of sessions) {
+                const d = new Date(s.created_at + 'Z');
+
+                const btn = new St.Button({
+                    style_class: 'button',
+                    style: `
+                        text-align: left;
+                        padding: 10px 14px;
+                        background-color: rgba(40,40,60,0.5);
+                        border-radius: 8px;
+                    `,
+                    x_expand: true,
+                });
+
+                const box = new St.BoxLayout({ vertical: true });
+                box.add_child(new St.Label({ text: `Session ${s.id.slice(0, 8)}`, style: 'font-weight: bold; color: #e0e8ff;' }));
+                box.add_child(new St.Label({ text: d.toLocaleString(), style: 'font-size: 11px; color: gray;' }));
+                btn.set_child(box);
+
+                // Hover fx
+                btn.connect('notify::hover', () => {
+                    btn.style = btn.hover
+                        ? `text-align: left; padding: 10px 14px; background-color: rgba(60,60,90,0.8); border-radius: 8px;`
+                        : `text-align: left; padding: 10px 14px; background-color: rgba(40,40,60,0.5); border-radius: 8px;`;
+                });
+
+                btn.connect('clicked', () => this._resumeSession(s.id));
+                this._historyBox.add_child(btn);
+            }
+        }
+
+        async _resumeSession(sessionId) {
+            this._clearChatUI();
+            this._sessionId = sessionId;
+            this._hideHistory();
+            this._setBusy(true);
+            this._setStatus('Loading messages...');
+
+            try {
+                const url = this._settings.get_string('server-url') + `/sessions/${sessionId}/messages`;
+                const apiKey = this._settings.get_string('api-key');
+                let uri;
+                try { uri = GLib.Uri.parse(url, GLib.UriFlags.NONE); } catch { return; }
+
+                const Soup = (await import('gi://Soup?version=3.0')).default;
+                const session = new Soup.Session();
+                const msg = new Soup.Message({ method: 'GET', uri });
+                if (apiKey) msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
+
+                const bytes = await session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null);
+                if (msg.status_code === 200) {
+                    const text = new TextDecoder().decode(bytes.get_data());
+                    const messages = JSON.parse(text);
+                    this._renderMessages(messages);
+                } else {
+                    this._addMessage(SystemBubble('Failed to load messages.', true));
+                }
+            } catch (e) {
+                this._addMessage(SystemBubble('Failed to connect to server.', true));
+            }
+            this._setBusy(false);
+            this._setStatus('');
+        }
+
+        _renderMessages(messages) {
+            const opts = { fontSize: this._settings.get_int('font-size') || 13 };
+            for (const msg of messages) {
+                if (msg.role === 'user') {
+                    // Extract text before TOON context if present
+                    let txt = msg.content;
+                    if (txt.includes('[Desktop Context — TOON]')) {
+                        const parts = txt.split('\\n[User Message]\\n');
+                        if (parts.length > 1) txt = parts[1];
+                        else txt = "Included desktop context."; // Fallback
+                    }
+                    this._addMessage(UserBubble(txt.trim(), opts));
+                } else if (msg.role === 'assistant') {
+                    this._addMessage(AssistantBubble(msg.content, opts).actor);
+                }
+            }
+            this._scrollToBottom();
+        }
+
         // ── Popup show/hide with animation ────────────────────────────────────────
 
         _togglePopup() {
+            // Re-wrap the main UI and history overlay into a stack-like structure
+            if (!this._popupContainer) {
+                this._popupContainer = new St.Widget({ layout_manager: new Clutter.BinLayout(), reactive: true });
+                this._mainContainer = this._popup;
+                this._historyPanel = this._buildHistoryPanel();
+
+                this._popupContainer.add_child(this._mainContainer);
+                this._popupContainer.add_child(this._historyPanel);
+
+                // Add resize handle
+                this._resizeHandle = new St.Icon({
+                    icon_name: 'view-restore-symbolic',
+                    icon_size: 16,
+                    style: 'color: rgba(150, 160, 200, 0.6); margin-bottom: 2px; margin-right: 2px; cursor: se-resize;',
+                    reactive: true,
+                });
+
+                // Position resize handle at bottom right
+                const handleContainer = new St.Widget({
+                    layout_manager: new Clutter.BinLayout(),
+                    x_expand: true, y_expand: true,
+                    x_align: Clutter.ActorAlign.END,
+                    y_align: Clutter.ActorAlign.END,
+                });
+                handleContainer.add_child(this._resizeHandle);
+                this._popupContainer.add_child(handleContainer);
+
+                this._setupDragResize();
+
+                // Keep references updated for Main.layoutManager tracking
+                this._popup = this._popupContainer;
+                this._applySettings();
+            }
+
             if (this._popup.visible) {
                 this._hidePopup();
             } else {
                 this._showPopup();
             }
+        }
+
+        _setupDragResize() {
+            let isDragging = false;
+            let startX, startY;
+            let startW, startH;
+
+            this._resizeHandle.connect('button-press-event', (actor, event) => {
+                const [bx, by] = event.get_button();
+                if (bx !== 1) return Clutter.EVENT_PROPAGATE; // only left click
+                isDragging = true;
+                [startX, startY] = event.get_coords();
+                startW = this.panelWidth;
+                startH = this.panelHeight;
+                Clutter.grab_pointer(actor);
+                return Clutter.EVENT_STOP;
+            });
+
+            this._resizeHandle.connect('motion-event', (actor, event) => {
+                if (!isDragging) return Clutter.EVENT_PROPAGATE;
+                const [cx, cy] = event.get_coords();
+                const dx = cx - startX;
+                const dy = cy - startY;
+
+                // Minimum sizes
+                this.panelWidth = Math.max(300, startW + dx);
+                this.panelHeight = Math.max(400, startH + dy);
+
+                this._applySettings(); // Update inline styles with new dims
+                this._repositionPopup();
+                return Clutter.EVENT_STOP;
+            });
+
+            this._resizeHandle.connect('button-release-event', (actor, event) => {
+                if (!isDragging) return Clutter.EVENT_PROPAGATE;
+                isDragging = false;
+                Clutter.ungrab_pointer();
+
+                // Persist new sizes
+                this._settings.set_int('window-width', this.panelWidth);
+                this._settings.set_int('window-height', this.panelHeight);
+
+                return Clutter.EVENT_STOP;
+            });
         }
 
         _showPopup() {
@@ -284,7 +603,7 @@ export const GnomeAgentIndicator = GObject.registerClass(
             const margin = this._settings.get_int('margin') ?? 6;
             const panelBox = Main.layoutManager.panelBox;
             const [px] = this.get_transformed_position();
-            const x = Math.max(margin, Math.min(px, global.stage.width - PANEL_WIDTH - margin));
+            const x = Math.max(margin, Math.min(px, global.stage.width - this.panelWidth - margin));
             this._popup.set_position(x, panelBox.height + margin);
         }
 
@@ -386,16 +705,20 @@ export const GnomeAgentIndicator = GObject.registerClass(
         }
 
         _clearChat() {
+            this._clearChatUI();
+            this._sessionId = null;
+            this._addMessage(SystemBubble('New conversation started'));
+        }
+
+        _clearChatUI() {
             this._cancelStream?.();
             this._cancelStream = null;
-            this._sessionId = null;
             this._currentAssistantBubble = null;
             this._currentToolBubbles = {};
             this._typingIndicator = null;
             this._messageBox.destroy_all_children();
             this._setBusy(false);
             this._setStatus('');
-            this._addMessage(SystemBubble('New conversation started'));
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────────

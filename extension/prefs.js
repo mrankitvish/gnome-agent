@@ -83,7 +83,7 @@ export default class GnomeAgentPreferences extends ExtensionPreferences {
         window.set_title(_('Gnome Agent'));
 
         window.add(this._buildStatusPage());
-        window.add(this._buildAgentsPage());
+        window.add(this._buildLlmConfigPage());
         window.add(this._buildMcpPage());
         window.add(this._buildToolsPage());
         window.add(this._buildConnectionPage());
@@ -108,10 +108,10 @@ export default class GnomeAgentPreferences extends ExtensionPreferences {
 
         // Status rows — filled by _refreshStatus
         this._statusRows = {};
-        const fields = ['status', 'version', 'tools_loaded', 'agents', 'sessions', 'mcp_servers'];
+        const fields = ['status', 'version', 'tools_loaded', 'sessions', 'mcp_servers'];
         const labels = {
             status: 'Connection', version: 'Runtime Version',
-            tools_loaded: 'Tools Loaded', agents: 'Agents', sessions: 'Sessions',
+            tools_loaded: 'Tools Loaded', sessions: 'Sessions',
             mcp_servers: 'Active MCP Servers',
         };
 
@@ -156,7 +156,6 @@ export default class GnomeAgentPreferences extends ExtensionPreferences {
         set('status', data.status === 'ok' ? '● Online' : '● Degraded');
         set('version', data.version);
         set('tools_loaded', data.tools_loaded);
-        set('agents', data.agents);
         set('sessions', data.sessions);
         set('mcp_servers', Array.isArray(data.mcp_servers) ? data.mcp_servers.join(', ') : data.mcp_servers);
         if (this._statusRows['status']) {
@@ -164,111 +163,108 @@ export default class GnomeAgentPreferences extends ExtensionPreferences {
         }
     }
 
-    // ── 2. AGENTS ─────────────────────────────────────────────────────────────
+    // ── 2. LLM CONFIGURATION ───────────────────────────────────────────────────
 
-    _buildAgentsPage() {
+    _buildLlmConfigPage() {
         const page = new Adw.PreferencesPage({
-            title: _('Agents'),
-            icon_name: 'user-available-symbolic',
+            title: _('LLM Config'),
+            icon_name: 'preferences-system-symbolic',
         });
 
-        // List group
-        this._agentsGroup = new Adw.PreferencesGroup({ title: _('Agent Profiles') });
-        page.add(this._agentsGroup);
+        const group = new Adw.PreferencesGroup({ title: _('Global LLM Settings') });
 
-        // Create new agent group
-        const createGroup = new Adw.PreferencesGroup({ title: _('Create New Agent') });
+        // Provider Dropdown
+        this._providerRow = new Adw.ComboRow({ title: _('Provider') });
+        const providerModel = new Gtk.StringList();
+        ['ollama', 'openai', 'anthropic', 'google_genai', 'groq', 'openai_compatible'].forEach(p => providerModel.append(p));
+        this._providerRow.model = providerModel;
 
-        this._newAgentName = new Adw.EntryRow({ title: _('Name') });
-        this._newAgentProvider = new Adw.EntryRow({ title: _('Provider'), text: 'openai_compatible' });
-        this._newAgentModel = new Adw.EntryRow({ title: _('Model'), text: 'mistral' });
-        this._newAgentPrompt = new Adw.EntryRow({
-            title: _('System Prompt'),
-            text: 'You are a helpful desktop AI assistant.',
+        this._modelRow = new Adw.EntryRow({ title: _('Model Name') });
+        this._baseUrlRow = new Adw.EntryRow({ title: _('Base URL (for Ollama/Compatible)') });
+        this._apiKeyRow = new Adw.PasswordEntryRow({ title: _('API Key') });
+        this._systemPromptRow = new Adw.EntryRow({ title: _('System Prompt') });
+        this._temperatureRow = new Adw.SpinRow({
+            title: _('Temperature'),
+            adjustment: new Gtk.Adjustment({ lower: 0.0, upper: 2.0, step_increment: 0.1, page_increment: 0.5 })
+        });
+        this._temperatureRow.digits = 2;
+
+        this._maxIterationsRow = new Adw.SpinRow({
+            title: _('Max Agent Iterations'),
+            adjustment: new Gtk.Adjustment({ lower: 1, upper: 20, step_increment: 1, page_increment: 5 })
         });
 
-        const createBtn = new Gtk.Button({
-            label: _('＋ Create Agent'),
+        const saveBtn = new Gtk.Button({
+            label: _('Save Configuration'),
             css_classes: ['suggested-action'],
             halign: Gtk.Align.END,
-            margin_top: 4,
+            margin_top: 12,
         });
-        createBtn.connect('clicked', () => this._createAgent());
+        saveBtn.connect('clicked', () => this._saveLlmConfig());
 
-        createGroup.add(this._newAgentName);
-        createGroup.add(this._newAgentProvider);
-        createGroup.add(this._newAgentModel);
-        createGroup.add(this._newAgentPrompt);
+        group.add(this._providerRow);
+        group.add(this._modelRow);
+        group.add(this._baseUrlRow);
+        group.add(this._apiKeyRow);
+        group.add(this._systemPromptRow);
+        group.add(this._temperatureRow);
+        group.add(this._maxIterationsRow);
 
-        const createRow = new Adw.ActionRow({ title: '' });
-        createRow.add_suffix(createBtn);
-        createGroup.add(createRow);
+        const btnRow = new Adw.ActionRow({ title: '' });
+        btnRow.add_suffix(saveBtn);
+        group.add(btnRow);
 
-        page.add(createGroup);
+        page.add(group);
 
-        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => { this._refreshAgents(); return GLib.SOURCE_REMOVE; });
+        // Load current config
+        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => { this._loadLlmConfig(); return GLib.SOURCE_REMOVE; });
 
         return page;
     }
 
-    _refreshAgents() {
-        if (!this._agentsRows) this._agentsRows = [];
-        this._agentsRows.forEach(row => this._agentsGroup.remove(row));
-        this._agentsRows = [];
+    _loadLlmConfig() {
+        const config = this._fetch('/config/llm');
+        if (!config) return;
 
-        const agents = this._fetch('/agents');
-        if (!agents || !agents.length) {
-            this._agentsGroup.description = _('No agents found — check connection');
-            return;
-        }
-        this._agentsGroup.description = null;
-
-        const activeId = this._settings.get_string('agent-id');
-
-        for (const agent of agents) {
-            const row = new Adw.ActionRow({
-                title: agent.name,
-                subtitle: `${agent.model_provider} / ${agent.model_name}`,
-            });
-
-            // Active radio indicator
-            const radio = new Gtk.CheckButton({ active: agent.id === activeId });
-            radio.connect('toggled', () => {
-                if (radio.active) this._settings.set_string('agent-id', agent.id);
-            });
-            row.add_prefix(radio);
-
-            // Delete button (hide for 'default')
-            if (agent.id !== 'default') {
-                const delBtn = new Gtk.Button({
-                    icon_name: 'user-trash-symbolic',
-                    css_classes: ['destructive-action', 'flat'],
-                    valign: Gtk.Align.CENTER,
-                    tooltip_text: _('Delete agent'),
-                });
-                delBtn.connect('clicked', () => {
-                    this._fetch(`/agents/${agent.id}`, 'DELETE');
-                    this._refreshAgents();
-                });
-                row.add_suffix(delBtn);
+        // Set provider dropdown
+        for (let i = 0; i < this._providerRow.model.get_n_items(); i++) {
+            if (this._providerRow.model.get_string(i) === config.provider) {
+                this._providerRow.selected = i;
+                break;
             }
-
-            this._agentsRows.push(row);
-            this._agentsGroup.add(row);
         }
+
+        this._modelRow.text = config.model || '';
+        this._baseUrlRow.text = config.base_url || '';
+        this._apiKeyRow.text = config.api_key || '';
+        this._systemPromptRow.text = config.system_prompt || '';
+        this._temperatureRow.value = config.temperature ?? 0.7;
+        this._maxIterationsRow.value = config.max_iterations ?? 6;
     }
 
-    _createAgent() {
-        const name = this._newAgentName.text.trim();
-        if (!name) return;
-        this._fetch('/agents', 'POST', {
-            name,
-            model_provider: this._newAgentProvider.text.trim() || 'openai_compatible',
-            model_name: this._newAgentModel.text.trim() || 'mistral',
-            system_prompt: this._newAgentPrompt.text.trim() || 'You are a helpful assistant.',
-        });
-        this._newAgentName.text = '';
-        this._refreshAgents();
+    _saveLlmConfig() {
+        const providerStr = this._providerRow.model.get_string(this._providerRow.selected);
+        const body = {
+            provider: providerStr,
+            model: this._modelRow.text,
+            base_url: this._baseUrlRow.text,
+            api_key: this._apiKeyRow.text,
+            system_prompt: this._systemPromptRow.text,
+            temperature: this._temperatureRow.value,
+            max_iterations: this._maxIterationsRow.value,
+        };
+
+        const res = this._fetch('/config/llm', 'PUT', body);
+        if (res) {
+            // Flash success
+            const btn = this._providerRow.get_parent().get_last_child().get_last_child(); // The save button
+            const oldLabel = btn.label;
+            btn.label = _('✓ Saved');
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+                if (btn) btn.label = oldLabel;
+                return GLib.SOURCE_REMOVE;
+            });
+        }
     }
 
     // ── 3. MCP SERVERS ────────────────────────────────────────────────────────

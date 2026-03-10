@@ -15,7 +15,7 @@ from app.core.agent_builder import AgentBuilder
 from app.core.permissions import PermissionManager
 from app.core.checkpointer import SQLiteCheckpointer
 from app.core.middleware import AuthMiddleware, RateLimitMiddleware
-from app.api import health, agents, mcp, chat, sessions
+from app.api import health, config, mcp, chat, sessions
 
 logging.basicConfig(
     level=logging.INFO,
@@ -129,7 +129,7 @@ def create_app() -> FastAPI:
 
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health.router)
-    app.include_router(agents.router)
+    app.include_router(config.router)
     app.include_router(mcp.router)
     app.include_router(chat.router)
     app.include_router(sessions.router)

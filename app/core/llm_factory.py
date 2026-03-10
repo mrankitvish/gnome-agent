@@ -9,8 +9,11 @@ Supported providers:
 import logging
 from typing import Any
 
-from langchain.chat_models import init_chat_model
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_mistralai import ChatMistralAI
+from langchain_ollama import ChatOllama
 
 from app.config import settings
 
@@ -18,9 +21,11 @@ logger = logging.getLogger(__name__)
 
 
 def get_llm(
-    provider: str | None = None,
-    model: str | None = None,
+    provider: str,
+    model: str,
     *,
+    base_url: str | None = None,
+    api_key: str | None = None,
     temperature: float = 0.7,
     streaming: bool = True,
     **kwargs: Any,
@@ -39,61 +44,70 @@ def get_llm(
     Returns:
         A LangChain BaseChatModel instance.
     """
-    provider = provider or settings.default_llm_provider
-    model = model or settings.default_llm_model
-
-    logger.info(
-        "Creating LLM: provider=%s model=%s temperature=%.2f streaming=%s",
-        provider,
-        model,
-        temperature,
-        streaming,
-    )
-
-    # ── OpenAI-compatible (LM Studio, vLLM, Ollama /v1, Jan, etc.) ───────────
+    # ── OpenAI-compatible (LM Studio, vLLM, default provider for generic APIs) ───────────
     if provider == "openai_compatible":
-        if not settings.openai_compatible_base_url:
+        if not base_url:
             raise ValueError(
-                "openai_compatible provider requires GNOME_AGENT_OPENAI_COMPATIBLE_BASE_URL to be set"
+                "openai_compatible provider requires a base URL"
             )
         return ChatOpenAI(
             model=model,
             temperature=temperature,
             streaming=streaming,
-            base_url=settings.openai_compatible_base_url,
-            api_key=settings.openai_compatible_api_key or "not-needed",
+            base_url=base_url,
+            api_key=api_key or "not-needed",
             **kwargs,
         )
 
     # ── Native Ollama ─────────────────────────────────────────────────────────
     if provider == "ollama":
-        return init_chat_model(
-            f"ollama:{model}",
+        return ChatOllama(
+            model=model,
             temperature=temperature,
-            streaming=streaming,
-            base_url=settings.ollama_base_url,
+            base_url=base_url,
             **kwargs,
         )
 
     # ── OpenAI ────────────────────────────────────────────────────────────────
     if provider == "openai":
-        extra: dict[str, Any] = {}
-        if settings.openai_api_key:
-            extra["api_key"] = settings.openai_api_key
-        return init_chat_model(
-            f"openai:{model}",
+        return ChatOpenAI(
+            model=model,
             temperature=temperature,
             streaming=streaming,
-            **extra,
+            api_key=api_key,
             **kwargs,
         )
 
-    # ── Fallback: pass provider:model directly to init_chat_model ────────────
-    logger.warning("Unknown provider '%s', passing to init_chat_model directly", provider)
-    return init_chat_model(
-        f"{provider}:{model}",
-        temperature=temperature,
-        streaming=streaming,
-        **kwargs,
-    )
+    # ── Anthropic ─────────────────────────────────────────────────────────────
+    if provider == "anthropic":
+        return ChatAnthropic(
+            model=model,
+            temperature=temperature,
+            streaming=streaming,
+            api_key=api_key,
+            **kwargs,
+        )
+
+    # ── Google GenAI (Gemini) ─────────────────────────────────────────────────
+    if provider == "google_genai":
+        return ChatGoogleGenerativeAI(
+            model=model,
+            temperature=temperature,
+            streaming=streaming,
+            api_key=api_key,
+            **kwargs,
+        )
+
+    # ── MistralAI ─────────────────────────────────────────────────────────────
+    if provider == "mistralai":
+        return ChatMistralAI(
+            model=model,
+            temperature=temperature,
+            streaming=streaming,
+            api_key=api_key,
+            **kwargs,
+        )
+
+    # ── Fallback ────────────
+    raise ValueError(f"Unknown LLM provider: {provider}")
 

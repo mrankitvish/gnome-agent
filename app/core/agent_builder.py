@@ -67,20 +67,22 @@ class AgentBuilder:
 
     def build(
         self,
-        agent_id: str,
         *,
         provider: str,
         model: str,
+        base_url: str | None = None,
+        api_key: str | None = None,
         system_prompt: str,
         temperature: float = 0.7,
         max_iterations: int | None = None,
     ) -> Any:
-        """Create or retrieve a cached agent instance.
+        """Create or retrieve a cached agent instance based on current global config.
 
         Args:
-            agent_id: Unique agent identifier (used as cache key).
             provider: LLM provider name.
             model: Model name.
+            base_url: Optional API base url.
+            api_key: Optional API key.
             system_prompt: Agent system prompt.
             temperature: Sampling temperature.
             max_iterations: Max LLM loop iterations (defaults to settings).
@@ -88,11 +90,20 @@ class AgentBuilder:
         Returns:
             A compiled LangGraph agent.
         """
-        if agent_id in self._cache:
-            logger.debug("Returning cached agent: %s", agent_id)
-            return self._cache[agent_id]
+        # Cache key based on all parameters so if config updates, a new graph is built.
+        cache_key = f"{provider}:{model}:{base_url}:{api_key}:{system_prompt}:{temperature}:{max_iterations}"
+        
+        if cache_key in self._cache:
+            logger.debug("Returning cached agent for current config")
+            return self._cache[cache_key]
 
-        llm = get_llm(provider, model, temperature=temperature)
+        llm = get_llm(
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            temperature=temperature
+        )
         tools = self._registry.get_all()
         iterations = max_iterations or settings.max_iterations
 
@@ -104,10 +115,10 @@ class AgentBuilder:
             max_iterations=iterations,
             max_tool_calls=settings.max_tool_calls,
         )
-        self._cache[agent_id] = agent
-        logger.info("Cached new agent instance: %s (%s:%s)", agent_id, provider, model)
+        self._cache[cache_key] = agent
+        logger.info("Compiled new agent graph for provider=%s model=%s", provider, model)
         return agent
 
-    def invalidate(self, agent_id: str) -> None:
-        """Remove a cached agent (e.g. after config update)."""
-        self._cache.pop(agent_id, None)
+    def invalidate_all(self) -> None:
+        """Clear the cache."""
+        self._cache.clear()

@@ -19,6 +19,12 @@
       <summary>Agent profile ID to use for chat</summary>
     </key>
 
+    <!-- Hotkey -->
+    <key name="global-shortcut" type="as">
+      <default><![CDATA[['<Super>space']]]></default>
+      <summary>Global hotkey to toggle chat panel</summary>
+    </key>
+
     <!-- Context injection toggles -->
     <key name="inject-active-app" type="b">
       <default>true</default>
@@ -49,6 +55,16 @@
     <key name="opacity" type="i">
       <default>95</default>
       <summary>Panel background opacity (%)</summary>
+    </key>
+
+    <key name="window-width" type="i">
+      <default>420</default>
+      <summary>Saved chat window width</summary>
+    </key>
+
+    <key name="window-height" type="i">
+      <default>580</default>
+      <summary>Saved chat window height</summary>
     </key>
 
   </schema>

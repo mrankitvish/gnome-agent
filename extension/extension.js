@@ -39,9 +39,21 @@ export default class GnomeAgentExtension extends Extension {
             this.path
         );
         Main.panel.addToStatusArea('gnome-agent', this._indicator);
+
+        // Register Global Hotkey
+        Main.wm.addKeybinding(
+            'global-shortcut',
+            this._settings,
+            Meta.KeyBindingFlags.NONE,
+            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+            () => {
+                this._indicator._togglePopup();
+            }
+        );
     }
 
     disable() {
+        Main.wm.removeKeybinding('global-shortcut');
         this._settings?.disconnect(this._settingsChangedId);
         this._settingsChangedId = null;
         this._indicator?.destroy();

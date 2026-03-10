@@ -6,7 +6,7 @@ Replaces InMemorySaver so conversation threads survive server restarts.
 from __future__ import annotations
 
 import logging
-from typing import Any, Iterator
+from typing import Any, AsyncIterator, Iterator
 
 import aiosqlite
 from langchain_core.load import dumps as lc_dumps, loads as lc_loads
@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     parent_checkpoint_id TEXT,
     checkpoint   TEXT NOT NULL,
     metadata     TEXT NOT NULL,
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
 );
 
@@ -72,7 +73,14 @@ class SQLiteCheckpointer(BaseCheckpointSaver):
         """Create checkpoint tables if they don't exist."""
         async with aiosqlite.connect(self._db_path) as db:
             await db.executescript(_SCHEMA)
-            await db.commit()
+            # Add created_at column to existing checkpoints table if missing
+            try:
+                await db.execute(
+                    "ALTER TABLE checkpoints ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+                )
+                await db.commit()
+            except Exception:
+                pass  # Column already exists
         logger.debug("Checkpoint tables initialized")
 
     # ── Required BaseCheckpointSaver interface ────────────────────────────────
@@ -131,10 +139,11 @@ class SQLiteCheckpointer(BaseCheckpointSaver):
                 """
                 params = (thread_id, checkpoint_ns, checkpoint_id)
             else:
+                # Order by rowid DESC (insertion order) to always get the LATEST checkpoint
                 sql = """
                     SELECT * FROM checkpoints
                     WHERE thread_id=? AND checkpoint_ns=?
-                    ORDER BY checkpoint_id DESC LIMIT 1
+                    ORDER BY rowid DESC LIMIT 1
                 """
                 params = (thread_id, checkpoint_ns)
 
@@ -167,6 +176,62 @@ class SQLiteCheckpointer(BaseCheckpointSaver):
             metadata=lc_loads(row["metadata"]),
             parent_config=parent_config,
         )
+
+    async def alist(
+        self,
+        config: RunnableConfig | None,
+        *,
+        filter: dict[str, Any] | None = None,
+        before: RunnableConfig | None = None,
+        limit: int | None = None,
+    ) -> AsyncIterator[CheckpointTuple]:
+        """Async list checkpoints for a thread in reverse chronological order."""
+        if config is None:
+            return
+
+        thread_id = config["configurable"].get("thread_id", "")
+        checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
+
+        sql = """
+            SELECT * FROM checkpoints
+            WHERE thread_id=? AND checkpoint_ns=?
+            ORDER BY rowid DESC
+        """
+        params: list[Any] = [thread_id, checkpoint_ns]
+
+        if limit:
+            sql += " LIMIT ?"
+            params.append(limit)
+
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(sql, params) as cur:
+                rows = await cur.fetchall()
+
+        for row in rows:
+            config_out: RunnableConfig = {
+                "configurable": {
+                    "thread_id": row["thread_id"],
+                    "checkpoint_ns": row["checkpoint_ns"],
+                    "checkpoint_id": row["checkpoint_id"],
+                }
+            }
+            parent_config: RunnableConfig | None = None
+            if row["parent_checkpoint_id"]:
+                parent_config = {
+                    "configurable": {
+                        "thread_id": row["thread_id"],
+                        "checkpoint_ns": row["checkpoint_ns"],
+                        "checkpoint_id": row["parent_checkpoint_id"],
+                    }
+                }
+
+            yield CheckpointTuple(
+                config=config_out,
+                checkpoint=lc_loads(row["checkpoint"]),
+                metadata=lc_loads(row["metadata"]),
+                parent_config=parent_config,
+            )
 
     async def aput(
         self,
